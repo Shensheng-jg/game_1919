@@ -10,7 +10,7 @@ default action_at_zjl = ""       # attack / parade
 default city_support = 0         # 各地响应度（由过程动态累计）
 default media_attention = 0      # 媒体关注度
 
-# 个人成长（来自设定稿的三维）
+
 default passion = 0              # 爱国热情
 default insight = 0              # 思想觉悟
 default fame = 0                 # 社会声望（个人影响力）
@@ -18,6 +18,8 @@ default fame = 0                 # 社会声望（个人影响力）
 default jailed = False           # 是否被捕
 default wrote_radical = False    # 是否写过檄文
 default wrote_commentary = False # 是否写过评论
+default strategy_work = ""    # 记录“街头演讲 / 办报写文章”
+
 
 # ===== 角色 =====
 define s = Character("你", color="#66ccff")
@@ -192,9 +194,11 @@ label strategy_choice:
 
     menu:
         "街头演讲":
+            $ strategy_work = "街头演讲"
             jump speech
 
         "办报写文章":
+            $ strategy_work = "办报写文章"
             jump article
 
 label speech:
@@ -256,27 +260,97 @@ label article:
 label resolution:
     n "几周后，局势逐渐明朗。"
 
-    # 终局评分：把个人成长融入集体运动的成效
-    # 基础：社会支持 + 各地响应 + 媒体关注 - 风险
-    # 加权：个人三维提供柔性加成
-    $ base_score = reputation + city_support + media_attention - risk
-    $ growth_bonus = (passion // 2) + (insight // 2) + (fame // 2)
-    $ score = base_score + growth_bonus
+    # —— 胜利公告 —— 
+    n "经过全国上下持续一个多月的巨大压力，胜利的消息终于传来！"
+    n "北洋政府被迫释放了所有被捕的学生。"
+    n "曹汝霖、章宗祥、陆宗舆三人被免职！"
+    n "中国代表最终拒绝在《巴黎和约》上签字！"
+    n "你们成功了！五四运动的直接目标已经实现。北京街头充满了欢呼的人群，你看到无数相识或不相识的人脸上洋溢着喜悦的泪水。"
 
-    # 条件修饰：若写过檄文但声望/觉悟不足，适当扣分以体现副作用
-    if wrote_radical and (fame + insight) < 3:
-        $ score -= 1
-    # 若被捕但媒体关注很高，形成“同情动员”效应
-    if jailed and media_attention >= 3:
-        $ score += 1
+    if strategy_work:
+        n "在这场运动中，你主要参与了[ strategy_work ]工作，为胜利贡献了自己的力量。"
 
-    if score >= 8:
-        n "在社会各界压力下，有关方面松动，部分主张得到回应。"
-        n "你与同学们虽疲惫不堪，但看到了改变的曙光。"
+    n "运动渐渐平息，是时候思考未来了。这场经历彻底改变了你。"
+
+    # ======= 画像判定：阈值与新结局 =======
+    $ mass_power = reputation + city_support + media_attention
+
+    # 悲剧英雄：阈值更高，强调“热情过盛 + 高风险/鲁莽迹象”
+    $ is_tragic = (passion >= 6) and (action_at_zjl == "attack" or jailed or risk >= 5)
+
+    # 革命之路：提高热情阈值，允许“写过檄文且风险承受高”作为次通道
+    $ is_revolution = ((passion >= 5 and insight >= 4) or (wrote_radical and passion >= 4 and risk >= 3))
+
+    # 文人斗士：提高声望与觉悟的双高门槛，并偏向写评论者
+    $ is_literati = (fame >= 5 and insight >= 5 and (wrote_commentary or strategy_work == "办报写文章"))
+
+    # 新结局1·社会组织者（群众领袖/社会改革者）：
+    # 强组织力与号召力，群体动员分高，风险不至于失控
+    $ is_organizer = ((fame >= 5 or reputation >= 2) and mass_power >= 8 and risk <= 4)
+
+    # 新结局2·教育先行者（学术/留学/从教）：
+    # 高觉悟、低风险取向，偏重理性建设；写评论或走“办报写文章”路径更容易触发
+    $ is_academic = (insight >= 5 and risk <= 2 and (wrote_commentary or strategy_work == "办报写文章"))
+
+    # ======= 结局分支 =======
+    if is_tragic:
+        n "【悲剧英雄】"
+        n "你的爱国热情炽烈如火，也因此多次挺身在前。一次行动中，你身受重伤（或不幸牺牲）。"
+        n "同学们以你的名字传颂这段历史，人们在惋惜中记住了那份无畏。"
         return
-    elif score >= 5:
-        n "局势有所进展，但代价不小。你意识到组织与持续沟通同样重要。"
+
+    elif is_revolution and not (is_literati or is_organizer or is_academic):
+        n "【革命之路】"
+        n "你对国家与人民的热爱与日俱增，思想也在斗争中日益成熟。"
+        n "你南下，或远赴法国勤工俭学，最终走上革命道路，成为坚定的共产党人。"
         return
+
+    elif is_literati and not (is_revolution or is_organizer or is_academic):
+        n "【文人斗士】"
+        n "你把笔当作刀枪，以文字为阵地。"
+        n "你成为杰出的作家、记者或学者，在文化战线持续启蒙民众，推动社会变革。"
+        return
+
+    elif is_organizer and not (is_revolution or is_literati or is_academic):
+        n "【社会组织者】"
+        n "你擅长协调各界力量，号召学生、工人、商人形成合力。"
+        n "此后你投身工会、社团或公益事业，推进社会改革，成为群众信赖的组织者。"
+        return
+
+    elif is_academic and not (is_revolution or is_literati or is_organizer):
+        n "【教育先行者】"
+        n "你选择在学术与教育中探寻强国之道，或远赴海外研习，或回国从教办学。"
+        n "你用知识塑造新一代青年，让启蒙之火持续燃烧。"
+        return
+
+    # 同时满足多种画像时的倾向选择
+    elif is_revolution or is_literati or is_organizer or is_academic:
+        # 三维谁更突出，偏向相应人物画像
+        if passion >= max(fame, insight) and is_revolution:
+            n "【革命之路】"
+            n "你既有思想也敢担当，最终投身革命洪流，成为坚定的共产党人。"
+            return
+        elif fame >= max(passion, insight):
+            if is_organizer:
+                n "【社会组织者】"
+                n "你以出众的动员与协调能力，持续推动社会改革。"
+                return
+            else:
+                n "【文人斗士】"
+                n "你以广泛的社会影响力与深刻的思想，在文化战线持续战斗。"
+                return
+        else:
+            if is_academic:
+                n "【教育先行者】"
+                n "你将理性与知识化为力量，投身教育与学术建设。"
+                return
+            else:
+                n "【文人斗士】"
+                n "你在思想与文化战线继续前行。"
+                return
+
     else:
-        n "风浪过后，余波仍在。并非所有努力都会立刻显现，但种子已播下。"
+        n "【未定之途】"
+        n "风浪过后，余波仍在。也许你会继续求学，也许你会在下一次风起时做出新的抉择。"
+        n "五四的火种，已在你心中点亮。"
         return
